@@ -1,0 +1,96 @@
+// ==UserScript==
+// @name         Steam Gallery Scroll V4 (Molette)
+// @namespace    http://tampermonkey.net/
+// @version      0.4
+// @description  Fait défiler les images de la galerie de jeux Steam avec la molette de la souris sur la nouvelle interface.
+// @author       Votre Nom
+// @match        https://store.steampowered.com/app/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // *** SÉLECTEURS MIS À JOUR BASÉS SUR VOTRE INSPECTION (V4) ***
+
+    // 1. Sélecteur pour le conteneur principal de la galerie (la zone où l'utilisateur utilise la molette)
+    // Nous utilisons la classe statique la plus probable de l'élément que vous avez inspecté.
+    // L'élément inspecté est : <div class="_29RD-6nVM1ZsiWWlkICHj_ _3R7Y3WNTdNhOgbZ21bs9xD" tabindex="0">
+    const GALLERY_SELECTOR = 'div[tabindex="0"]'; // Cible l'élément qui contient l'image principale et qui est focusable.
+
+    // 2. Sélecteur pour le bouton "Suivant"
+    // L'élément inspecté pour le Suivant est : <div class="KkkFLdIE4YTPfdeoIQoo2 _2XmwxD18W2cEXHlvhYbcyJ" data-keepcontrols="true">
+    // Nous ciblons la classe unique associée au bouton Suivant.
+    const NEXT_BUTTON_SELECTOR = '._2XmwxD18W2cEXHlvhYbcyJ';
+
+    // 3. Sélecteur pour le bouton "Précédent"
+    // L'élément inspecté pour le Précédent est : <div class="KkkFLdIE4YTPfdeoIQoo2 _1EBlS2FQmejekYhQDC-Kmh" data-keepcontrols="true">
+    // Nous ciblons la classe unique associée au bouton Précédent.
+    const PREV_BUTTON_SELECTOR = '._1EBlS2FQmejekYhQDC-Kmh';
+
+    // NOTE SUR LES SÉLECTEURS: Nous utilisons les classes longues et bizarres car elles sont spécifiques
+    // aux boutons Précédent et Suivant, même si une partie de la classe est commune aux deux.
+    // Pour le conteneur de galerie, nous utilisons 'div[tabindex="0"]' dans cette zone car c'est un sélecteur
+    // plus générique et moins susceptible de changer que le `data-gallery-panel-id` précédent, tout en étant
+    // suffisamment spécifique.
+
+    /**
+     * Tente de trouver les éléments et d'attacher l'écouteur d'événement de la molette.
+     * Cette fonction se rappelle elle-même si les éléments ne sont pas encore chargés.
+     */
+    function setupScrollListener() {
+        // Tente de trouver les trois éléments nécessaires
+        const galleryContainer = document.querySelector(GALLERY_SELECTOR);
+        const buttonNext = document.querySelector(NEXT_BUTTON_SELECTOR);
+        const buttonPrev = document.querySelector(PREV_BUTTON_SELECTOR);
+
+        if (galleryContainer && buttonNext && buttonPrev) {
+
+            // Événement 'wheel' (molette)
+            galleryContainer.addEventListener('wheel', function(e) {
+
+                // 1. Arrêter le comportement par défaut (le défilement de la page)
+                e.preventDefault();
+                // 2. Empêcher l'événement d'atteindre les parents (le document)
+                e.stopPropagation();
+
+                let buttonToClick = null;
+
+                // e.deltaY > 0 -> Défilement vers le bas (Down scroll) -> Image Suivante
+                if (e.deltaY > 0) {
+                    buttonToClick = buttonNext;
+                }
+                // e.deltaY < 0 -> Défilement vers le haut (Up scroll) -> Image Précédente
+                else if (e.deltaY < 0) {
+                    buttonToClick = buttonPrev;
+                }
+
+                if (buttonToClick) {
+                    // Simuler un clic sur le bouton de navigation approprié
+                    buttonToClick.click();
+                    // Ajout d'une animation visuelle pour confirmer l'action (optionnel mais utile)
+                    galleryContainer.style.transition = 'opacity 0.1s';
+                    galleryContainer.style.opacity = '0.7';
+                    setTimeout(() => {
+                        galleryContainer.style.opacity = '1';
+                    }, 100);
+
+                    console.log(`Navigation Steam : Clic simulé sur le bouton ${e.deltaY > 0 ? 'Suivant' : 'Précédent'}.`);
+                }
+            }, { passive: false }); // { passive: false } est crucial pour permettre e.preventDefault()
+
+            console.log('Steam Gallery Scroll V4 : Script actif et écouteur attaché à la galerie.');
+
+        } else {
+            // Si les éléments ne sont pas encore là (chargement dynamique), on réessaye après un court délai.
+            // On utilise un délai plus long (1000ms) pour donner plus de temps au chargement de la page Steam.
+            console.warn('Steam Gallery Scroll V4 : Éléments de la galerie ou des boutons non trouvés. Nouvelle tentative dans 1000ms.');
+            setTimeout(setupScrollListener, 1000);
+        }
+    }
+
+    // Démarre la recherche des éléments
+    setupScrollListener();
+
+})();
