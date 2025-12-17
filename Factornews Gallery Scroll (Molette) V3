@@ -1,0 +1,88 @@
+// ==UserScript==
+// @name         Factornews Gallery Scroll (Molette) V3
+// @namespace    http://tampermonkey.net/
+// @version      0.3
+// @description  Fait défiler les images de la galerie Lightbox Factornews avec la molette de la souris.
+// @author       Votre Nom
+// @match        https://www.factornews.com/actualites/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // --- SÉLECTEURS MIS À JOUR POUR LA LIGHTBOX (V3) ---
+
+    // Le conteneur STABLE de la Lightbox qui NE CHANGE PAS quand l'image défile.
+    // L'élément englobant toute la fenêtre Lightbox est généralement '#colorbox'.
+    const STABLE_CONTAINER_SELECTOR = '#colorbox';
+
+    // Les boutons restent les mêmes IDs.
+    const PREV_BUTTON_SELECTOR = '#cboxPrevious';
+    const NEXT_BUTTON_SELECTOR = '#cboxNext';
+
+    // On stocke l'état pour savoir si l'écouteur est déjà attaché
+    let isListenerAttached = false;
+
+    /**
+     * Tente de trouver les éléments et d'attacher l'écouteur d'événement de la molette.
+     */
+    function setupScrollListener() {
+        // Si l'écouteur est déjà attaché au conteneur stable, on s'arrête.
+        if (isListenerAttached) return;
+
+        // On cherche le conteneur stable et les boutons
+        const stableContainer = document.querySelector(STABLE_CONTAINER_SELECTOR);
+        const buttonNext = document.querySelector(NEXT_BUTTON_SELECTOR);
+        const buttonPrev = document.querySelector(PREV_BUTTON_SELECTOR);
+        // On cherche aussi l'overlay pour s'assurer que la Lightbox est visible
+        const cboxOverlay = document.querySelector('#cboxOverlay');
+
+
+        if (stableContainer && buttonNext && buttonPrev && cboxOverlay && cboxOverlay.style.display !== 'none') {
+
+            // Événement 'wheel' (molette) attaché au conteneur stable
+            stableContainer.addEventListener('wheel', function(e) {
+
+                // Vérifier si l'événement provient bien de la zone de l'image ou de la boîte elle-même.
+                // Cela évite de déclencher le défilement si l'utilisateur scroll sur la page principale en arrière-plan (même si overlay est là).
+                const target = e.target.closest('#cboxLoadedContent, #colorbox');
+                if (!target) return; // Ne rien faire si le clic n'est pas dans la Lightbox.
+
+
+                // Arrêter le comportement par défaut (défilement) et empêcher la propagation
+                e.preventDefault();
+                e.stopPropagation();
+
+                let buttonToClick = null;
+
+                // e.deltaY > 0 -> Défilement vers le bas -> Image Suivante
+                if (e.deltaY > 0) {
+                    buttonToClick = buttonNext;
+                }
+                // e.deltaY < 0 -> Défilement vers le haut -> Image Précédente
+                else if (e.deltaY < 0) {
+                    buttonToClick = buttonPrev;
+                }
+
+                if (buttonToClick && buttonToClick.style.display !== 'none') {
+                    // Simuler un clic, seulement si le bouton n'est pas caché
+                    buttonToClick.click();
+                    console.log(`Factornews Lightbox V3 : Clic simulé sur le bouton ${e.deltaY > 0 ? 'Suivant' : 'Précédent'}.`);
+                }
+            }, { passive: false }); // { passive: false } est vital
+
+            console.log('Factornews Gallery Scroll V3 : Écouteur attaché au conteneur stable (#colorbox).');
+            isListenerAttached = true;
+
+        } else {
+            // Si la lightbox n'est pas encore ouverte (elle n'est pas dans le DOM), on réessaye très souvent.
+            setTimeout(setupScrollListener, 50);
+        }
+    }
+
+    // Démarre la recherche des éléments
+    setupScrollListener();
+
+})();
