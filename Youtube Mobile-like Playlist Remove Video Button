@@ -1,0 +1,189 @@
+// ==UserScript==
+// @name        Youtube Mobile-like Playlist Remove Video Button - Gemini + GPT Fix
+// @license     MIT
+// @namespace   rtonne
+// @match       https://www.youtube.com/*
+// @icon        https://www.google.com/s2/favicons?sz=64&domain=youtube.com
+// @version     1.8
+// @author      Rtonne + Gemini + GPT
+// @description Adds a button to remove videos from playlists just like on mobile, with fixed deletion method
+// @run-at      document-end
+// @grant       GM.addStyle
+// ==/UserScript==
+
+GM.addStyle(`
+ytd-playlist-video-renderer:hover .rtonne-youtube-playlist-delete-button {
+  width: var(--yt-icon-width);
+}
+.rtonne-youtube-playlist-delete-button {
+  width: 0;
+  background-color: var(--yt-spec-additive-background);
+  fill: var(--yt-spec-text-primary);
+  border-width: 0;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+.rtonne-youtube-playlist-delete-button:hover {
+  background-color: var(--yt-spec-static-brand-red);
+}
+body.rtonne-youtube-playlist-delete-button-in-progress .rtonne-youtube-playlist-delete-button {
+  pointer-events: none;
+}
+body.rtonne-youtube-playlist-delete-button-in-progress .rtonne-youtube-playlist-delete-button > div > svg {
+  display: none !important;
+}
+body.rtonne-youtube-playlist-delete-button-in-progress .rtonne-youtube-playlist-delete-button > div {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--yt-spec-text-primary);
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  box-sizing: border-box;
+  animation: rotation 2s linear infinite;
+}
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+`);
+
+let currentUrl = null;
+const urlRegex = /^https:\/\/www.youtube.com\/playlist\?list=.*$/;
+
+// ---------- Observer principal pour injecter boutons ----------
+const observer = new MutationObserver(async () => {
+  try {
+    let newUrl = window.location.href;
+
+    if (!urlRegex.test(newUrl)) return;
+
+    const elements = await waitForElements(document, "ytd-playlist-video-renderer");
+
+    if (
+      currentUrl === newUrl &&
+      elements.length === document.querySelectorAll(".rtonne-youtube-playlist-delete-button").length
+    ) return;
+
+    currentUrl = newUrl;
+
+    if (!document.querySelector("#header-container > #filter-menu > yt-sort-filter-sub-menu-renderer")) return;
+
+    elements.forEach((element) => {
+      if (element.querySelector(".rtonne-youtube-playlist-delete-button")) return;
+
+      const elementStyle = document.defaultView.getComputedStyle(element);
+      const button = document.createElement("button");
+      button.className = "rtonne-youtube-playlist-delete-button";
+      button.style.height = elementStyle.height;
+      button.style.borderRadius = `0 ${elementStyle.borderTopRightRadius} ${elementStyle.borderBottomRightRadius} 0`;
+      button.append(getYoutubeTrashSvg());
+
+      element.appendChild(button);
+
+      // ---------- Nouvelle logique de suppression (méthode Gemini) ----------
+      button.onclick = async () => {
+        document.body.classList.add("rtonne-youtube-playlist-delete-button-in-progress");
+
+        const videoRow = element;
+
+        const menuButton = videoRow.querySelector("button.yt-icon-button");
+        if (!menuButton) {
+          console.error("[Rtonne+Gemini] Bouton menu introuvable");
+          document.body.classList.remove("rtonne-youtube-playlist-delete-button-in-progress");
+          return;
+        }
+
+        try {
+          // Ouvrir menu ...
+          menuButton.click();
+
+          // Attendre le menu et trouver le bouton "Retirer"
+          const removeMenuItem = await findRemoveMenuItem();
+          if (removeMenuItem) {
+            removeMenuItem.click();
+          } else {
+            console.warn("[Rtonne+Gemini] Bouton retirer non trouvé, fermeture menu");
+            menuButton.click();
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          document.body.classList.remove("rtonne-youtube-playlist-delete-button-in-progress");
+        }
+      };
+    });
+  } catch (err) {
+    console.error(err);
+  }
+});
+observer.observe(document.body, { childList: true, subtree: true });
+
+// ---------- Fonction d’attente d’éléments ----------
+function waitForElements(node, selector) {
+  return new Promise((resolve) => {
+    if (node.querySelector(selector)) return resolve(node.querySelectorAll(selector));
+
+    const observer = new MutationObserver(() => {
+      if (node.querySelector(selector)) {
+        observer.disconnect();
+        resolve(node.querySelectorAll(selector));
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributeFilter: ["style"] });
+  });
+}
+
+// ---------- Génération SVG poubelle ----------
+function getYoutubeTrashSvg() {
+  const xmlns = "http://www.w3.org/2000/svg";
+  const container = document.createElement("div");
+  container.setAttribute("style", "height: 24px;");
+  const svg = document.createElementNS(xmlns, "svg");
+  svg.setAttribute("enable-background", "new 0 0 24 24");
+  svg.setAttribute("height", "24");
+  svg.setAttribute("width", "24");
+  svg.setAttribute("viewbox", "0 0 24 24");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("style", "pointer-events: none;display: block;margin: auto;");
+  container.append(svg);
+  const path = document.createElementNS(xmlns, "path");
+  path.setAttribute("d", getSvgPathD());
+  svg.append(path);
+  return container;
+}
+
+function getSvgPathD() {
+  return "M11 17H9V8h2v9zm4-9h-2v9h2V8zm4-4v1h-1v16H6V5H5V4h4V3h6v1h4zm-2 1H7v15h10V5z";
+}
+
+// ---------- Nouvelle fonction findRemoveMenuItem (méthode Gemini) ----------
+function findRemoveMenuItem() {
+  return new Promise((resolve) => {
+    let attempts = 0;
+    const maxAttempts = 20;
+    const removalKeywords = ["retirer de regarder plus tard", "remove from watch later"];
+
+    const check = () => {
+      const menuContainer = document.querySelector(
+        "ytd-popup-container tp-yt-paper-listbox, ytd-menu-popup-renderer, yt-universal-popup-renderer"
+      );
+      if (menuContainer) {
+        const menuItems = menuContainer.querySelectorAll("ytd-menu-service-item-renderer, tp-yt-paper-item");
+        for (const item of menuItems) {
+          const text = (item.textContent || "").trim().toLowerCase();
+          if (removalKeywords.some((k) => text.includes(k))) {
+            resolve(item);
+            return;
+          }
+        }
+      }
+      if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(check, 100);
+      } else resolve(null);
+    };
+    setTimeout(check, 50);
+  });
+}
